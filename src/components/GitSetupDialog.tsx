@@ -47,7 +47,7 @@ export function GitSetupDialog({ open, hasRemote, onClose, onClone, onInit }: Pr
           <button
             onClick={() => !loading && onClose()}
             disabled={loading}
-            className="text-muted hover:text-secondary p-1 rounded transition-colors outline-none"
+            className="text-muted hover:text-secondary p-1 rounded-md transition-colors outline-none"
           >
             <X className="w-4 h-4" />
           </button>

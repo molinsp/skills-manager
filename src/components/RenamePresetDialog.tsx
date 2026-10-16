@@ -75,7 +75,7 @@ export function RenamePresetDialog({
       <div className="relative bg-surface border border-border rounded-xl w-full max-w-[400px] p-5 shadow-2xl">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-[13px] font-semibold text-primary">{t("common.edit")}</h2>
-          <button onClick={onClose} className="text-muted hover:text-secondary p-1 rounded transition-colors outline-none">
+          <button onClick={onClose} className="text-muted hover:text-secondary p-1 rounded-md transition-colors outline-none">
             <X className="w-4 h-4" />
           </button>
         </div>

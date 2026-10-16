@@ -70,7 +70,7 @@ export function ConfirmDialog({
             <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400" />
             {title || t("common.confirm")}
           </h2>
-          <button onClick={close} disabled={locked} className="text-muted hover:text-secondary p-1 rounded transition-colors outline-none disabled:opacity-50">
+          <button onClick={close} disabled={locked} className="text-muted hover:text-secondary p-1 rounded-md transition-colors outline-none disabled:opacity-50">
             <X className="w-4 h-4" />
           </button>
         </div>

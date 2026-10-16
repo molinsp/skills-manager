@@ -154,6 +154,31 @@ pub fn install_skill_dir_to_destination(
 ) -> Result<InstallResult> {
     let meta = skill_metadata::parse_skill_md(source);
 
+    // A local skill can be a symlink back to this exact central directory
+    // (for example, after restoring the database). Treat that as an already
+    // installed directory: removing `destination` here would delete the data
+    // that `source` resolves to before the copy starts.
+    // Only when `destination` is itself a real directory: if it is a link out
+    // of the library, fall through so it is replaced by a real copy.
+    if source != destination {
+        let source_canonical = source.canonicalize().ok();
+        let destination_canonical = destination.canonicalize().ok();
+        if source_canonical.is_some()
+            && source_canonical == destination_canonical
+            && destination
+                .symlink_metadata()
+                .is_ok_and(|metadata| metadata.file_type().is_dir())
+        {
+            let hash = content_hash::hash_directory(destination)?;
+            return Ok(InstallResult {
+                name: name.to_string(),
+                description: meta.description,
+                central_path: destination.to_path_buf(),
+                content_hash: hash,
+            });
+        }
+    }
+
     sync_engine::ensure_dst_not_inside_src(source, destination)?;
 
     if destination.exists() {
@@ -352,6 +377,54 @@ mod tests {
         // The source must not be touched, and no nested copy must exist.
         assert!(source.join("body.md").exists());
         assert!(!destination.exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn central_skill_symlink_import_preserves_content() {
+        let tmp = tempdir().unwrap();
+        let destination = make_skill_dir(tmp.path(), "central", Some("central"));
+        std::fs::write(destination.join("only-copy.txt"), "precious").unwrap();
+        let source = tmp.path().join("agent-link");
+        std::os::unix::fs::symlink(&destination, &source).unwrap();
+        let expected_hash = content_hash::hash_directory(&destination).unwrap();
+        assert_eq!(
+            unique_skill_dest(tmp.path(), "central", &source).unwrap(),
+            destination
+        );
+
+        let result = install_skill_dir_to_destination(&source, "central", &destination);
+        assert_eq!(
+            std::fs::read_to_string(destination.join("only-copy.txt")).unwrap(),
+            "precious"
+        );
+        let result = result.expect("reimporting a link to the central skill should succeed");
+        assert_eq!(result.content_hash, expected_hash);
+        assert_eq!(result.central_path, destination);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn central_destination_symlink_is_materialized_as_directory() {
+        let tmp = tempdir().unwrap();
+        let source = make_skill_dir(tmp.path(), "external", Some("external"));
+        std::fs::write(source.join("only-copy.txt"), "precious").unwrap();
+        let destination = tmp.path().join("central-link");
+        std::os::unix::fs::symlink(&source, &destination).unwrap();
+
+        install_skill_dir_to_destination(&source, "external", &destination).unwrap();
+        assert!(
+            destination.symlink_metadata().unwrap().file_type().is_dir(),
+            "the central library must own a real directory"
+        );
+        assert_eq!(
+            std::fs::read_to_string(source.join("only-copy.txt")).unwrap(),
+            "precious"
+        );
+        assert_eq!(
+            std::fs::read_to_string(destination.join("only-copy.txt")).unwrap(),
+            "precious"
+        );
     }
 
     #[test]

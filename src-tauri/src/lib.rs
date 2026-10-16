@@ -23,7 +23,7 @@ static TRAY_PRESET_APPLY_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 /// tray menu can render a disabled "Checking for updates..." label.
 static TRAY_CHECK_UPDATES_RUNNING: AtomicBool = AtomicBool::new(false);
 
-const MAIN_TRAY_ID: &str = "main-tray";
+const MAIN_TRAY_ID: &str = "skills-manager-tray";
 const TRAY_PRESET_ADD_PREFIX: &str = "tray-preset-add:";
 const TRAY_PRESET_REMOVE_PREFIX: &str = "tray-preset-remove:";
 const TRAY_OPEN_UPDATES_ID: &str = "tray-open-updates";
@@ -1155,6 +1155,20 @@ pub fn run() {
             commands::presets::get_preset_skill_order,
             commands::presets::reorder_preset_skills,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Reopen {
+                has_visible_windows,
+                ..
+            } = event
+            {
+                if !has_visible_windows {
+                    restore_main_window(app);
+                }
+            }
+            #[cfg(not(target_os = "macos"))]
+            let _ = (app, event);
+        });
 }

@@ -15,6 +15,7 @@ import { cn } from "../utils";
 import * as api from "../lib/tauri";
 import type { ManagedSkill, ProjectAgentTarget } from "../lib/tauri";
 import { getErrorMessage } from "../lib/error";
+import { normalizeSkillSearch, skillSearchMatches } from "../lib/skillSearch";
 import {
   classifySkill,
   targetsToInstall,
@@ -177,16 +178,11 @@ function AddSkillsSheetBody({ onClose, target, managedSkills, onInstalled }: Pro
   );
 
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const q = normalizeSkillSearch(search);
     const hasUntagged = tagFilters.has(UNTAGGED_FILTER);
     const tagSelected = tagFilters.size > 0;
     return managedSkills.filter((skill) => {
-      if (q) {
-        const matches =
-          skill.name.toLowerCase().includes(q) ||
-          (skill.description || "").toLowerCase().includes(q);
-        if (!matches) return false;
-      }
+      if (!skillSearchMatches(q, [skill.name, skill.description])) return false;
       if (sourceFilters.size > 0 && !sourceFilters.has(skill.source_type)) return false;
       if (tagSelected) {
         const matchUntagged = hasUntagged && skill.tags.length === 0;

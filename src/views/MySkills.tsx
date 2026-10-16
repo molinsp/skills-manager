@@ -53,6 +53,7 @@ import type {
   SkillToolToggle,
 } from "../lib/tauri";
 import { getErrorMessage } from "../lib/error";
+import { normalizeSkillSearch, skillSearchMatches } from "../lib/skillSearch";
 import {
   DndContext,
   closestCenter,
@@ -113,7 +114,7 @@ function SortableSkillItem({
       title={handleTitle}
       className={
         handleClassName ??
-        "flex cursor-grab items-center justify-center rounded p-1 text-faint transition-colors hover:bg-surface-hover hover:text-muted active:cursor-grabbing"
+        "flex cursor-grab items-center justify-center rounded-md p-1 text-faint transition-colors hover:bg-surface-hover hover:text-muted active:cursor-grabbing"
       }
     >
       <GripVertical className="h-4 w-4" />
@@ -285,12 +286,15 @@ export function MySkills() {
   }, [skills]);
 
   const filtered = useMemo(() => {
+    const query = normalizeSkillSearch(search);
     const result = skills.filter((skill) => {
       const displayName = skillDisplayNames.get(skill.id) || skill.name;
-      const matchesSearch =
-        skill.name.toLowerCase().includes(search.toLowerCase()) ||
-        displayName.toLowerCase().includes(search.toLowerCase()) ||
-        (skill.description || "").toLowerCase().includes(search.toLowerCase());
+      const matchesSearch = skillSearchMatches(query, [
+        skill.name,
+        displayName,
+        centralDirName(skill),
+        skill.description,
+      ]);
       if (!matchesSearch) return false;
 
       if (sourceFilters.size > 0 && !sourceFilters.has(skill.source_type)) return false;
@@ -1413,7 +1417,7 @@ export function MySkills() {
                       : undefined
                   }
                   handleTitle={t("mySkills.dragToReorder")}
-                  handleClassName="absolute inset-0 flex cursor-grab items-center justify-center rounded text-faint opacity-0 transition-opacity hover:text-muted group-hover:opacity-100 active:cursor-grabbing"
+                  handleClassName="absolute inset-0 flex cursor-grab items-center justify-center rounded-md text-faint opacity-0 transition-opacity hover:text-muted group-hover:opacity-100 active:cursor-grabbing"
                 >
                 {(dragHandle) => (
                 <div
@@ -1612,7 +1616,7 @@ export function MySkills() {
                                   type="button"
                                   onMouseDown={(e) => e.preventDefault()}
                                   onClick={(e) => { e.stopPropagation(); handleAddTag(skill, tagOption); }}
-                                  className="w-full truncate rounded px-1.5 py-1 text-left text-[11px] text-secondary hover:bg-surface-hover"
+                                  className="w-full truncate rounded-md px-1.5 py-1 text-left text-[11px] text-secondary hover:bg-surface-hover"
                                   title={tagOption}
                                 >
                                   {tagOption}
@@ -1679,7 +1683,7 @@ export function MySkills() {
                 disabled={!canDrag}
                 className={menuSkillId === skill.id ? "relative z-30" : undefined}
                 handleTitle={t("mySkills.dragToReorder")}
-                handleClassName="absolute inset-0 flex cursor-grab items-center justify-center rounded text-faint opacity-0 transition-opacity hover:text-muted group-hover:opacity-100 active:cursor-grabbing"
+                handleClassName="absolute inset-0 flex cursor-grab items-center justify-center rounded-md text-faint opacity-0 transition-opacity hover:text-muted group-hover:opacity-100 active:cursor-grabbing"
               >
               {(dragHandle) => (
               <div
@@ -1807,14 +1811,14 @@ export function MySkills() {
                     <button
                       onClick={(e) => { e.stopPropagation(); handleRelinkSource(skill); }}
                       disabled={updatingSkillId === skill.id}
-                      className="rounded px-2 py-0.5 text-[13px] font-medium text-secondary transition-colors hover:bg-surface-hover disabled:opacity-50"
+                      className="rounded-md px-2 py-0.5 text-[13px] font-medium text-secondary transition-colors hover:bg-surface-hover disabled:opacity-50"
                     >
                       {t("mySkills.updateActions.relink")}
                     </button>
                     <button
                       onClick={(e) => { e.stopPropagation(); handleDetachSource(skill); }}
                       disabled={updatingSkillId === skill.id}
-                      className="rounded px-2 py-0.5 text-[13px] font-medium text-muted transition-colors hover:bg-surface-hover hover:text-secondary disabled:opacity-50"
+                      className="rounded-md px-2 py-0.5 text-[13px] font-medium text-muted transition-colors hover:bg-surface-hover hover:text-secondary disabled:opacity-50"
                     >
                       {t("mySkills.updateActions.detachSource")}
                     </button>

@@ -91,7 +91,7 @@ export function BatchSyncAgentDialog({ open, skills, tools, onClose, onApply }: 
           </h2>
           <button
             onClick={onClose}
-            className="rounded p-1 text-muted outline-none transition-colors hover:text-secondary"
+            className="rounded-md p-1 text-muted outline-none transition-colors hover:text-secondary"
           >
             <X className="h-4 w-4" />
           </button>
