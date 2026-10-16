@@ -35,8 +35,7 @@ const RECURSIVE_SCAN_SKIP_DIRS: &[&str] = &[".hub", ".git", "node_modules"];
 
 fn is_symlink_to_central(path: &Path) -> bool {
     if let Ok(target) = std::fs::read_link(path) {
-        let central = super::central_repo::skills_dir();
-        return target.starts_with(&central);
+        return super::central_repo::is_managed_source_path(&target);
     }
     false
 }
@@ -271,6 +270,23 @@ mod tests {
         collect_skill_dirs_recursive(root, &mut visited, &mut results);
         results.sort();
         results
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn symlinks_into_synced_repos_are_not_discovered_as_foreign_skills() {
+        let _guard = super::super::central_repo::test_base_dir_lock();
+        let tmp = tempdir().unwrap();
+        super::super::central_repo::set_test_base_dir_override(Some(tmp.path().join("base")));
+        let synced = super::super::central_repo::synced_repo_dir("acme").join("current/s1");
+        write_skill(&synced);
+        let agent = tmp.path().join("agent");
+        fs::create_dir_all(&agent).unwrap();
+        std::os::unix::fs::symlink(&synced, agent.join("s1")).unwrap();
+
+        let results = run(&agent);
+        super::super::central_repo::set_test_base_dir_override(None);
+        assert!(results.is_empty(), "{results:?}");
     }
 
     #[test]

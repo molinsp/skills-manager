@@ -6,11 +6,14 @@ import {
   Github,
   HardDrive,
   Globe,
+  GitFork,
+  AlertTriangle,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { cn } from "../utils";
 import {
   getSkillDocument,
+  getSyncedRepoRef,
   getSourceSkillDocument,
   getSkillSourceDiff,
   type ManagedSkill,
@@ -190,12 +193,20 @@ function SkillDetailPanelContent({
       case "local":
       case "import":
         return <HardDrive className="h-3.5 w-3.5" />;
+      case "synced_repo":
+        return <GitFork className="h-3.5 w-3.5" />;
       default:
         return <Globe className="h-3.5 w-3.5" />;
     }
   };
 
-  const sourceTypeLabel = (type: string) => (type === "skillssh" ? "skills.sh" : type);
+  const syncedRepo = getSyncedRepoRef(skill);
+  const sourceTypeLabel = (type: string) =>
+    type === "synced_repo" && syncedRepo
+      ? t("syncedRepos.badge", { name: syncedRepo.name })
+      : type === "skillssh"
+        ? "skills.sh"
+        : type;
 
   const metadataItems = [
     { label: t("mySkills.sourceType"), value: sourceTypeLabel(skill.source_type) },
@@ -242,6 +253,12 @@ function SkillDetailPanelContent({
           </>
         )}
       </div>
+      {syncedRepo && !syncedRepo.devMode && (
+        <div className="mt-3 flex items-center gap-2 rounded-lg bg-amber-500/10 px-3 py-2 text-[12px] text-amber-600 dark:text-amber-400">
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+          {t("syncedRepos.editWarning")}
+        </div>
+      )}
       <div className="mt-3 flex min-w-0 items-center gap-2 text-[13px] text-muted">
         <Folder className="h-3.5 w-3.5 shrink-0" />
         <span className="font-mono truncate" title={skill.central_path}>

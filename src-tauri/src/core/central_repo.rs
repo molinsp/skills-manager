@@ -383,6 +383,23 @@ fn sanitize_dir_name(name: &str) -> String {
     }
 }
 
+/// Root of all synced-repo clones. Sibling of `skills_dir()` under the base
+/// dir, so Backup (which only looks inside `skills_dir()`) never sees it.
+pub fn synced_repos_dir() -> PathBuf {
+    base_dir().join("synced_repos")
+}
+
+/// Directory of one synced repo: `<synced_repos>/<slug>`.
+pub fn synced_repo_dir(slug: &str) -> PathBuf {
+    synced_repos_dir().join(slug)
+}
+
+/// True if `p` lives under a location the app manages skills in:
+/// `skills_dir()` or `synced_repos_dir()`.
+pub fn is_managed_source_path(p: &Path) -> bool {
+    p.starts_with(skills_dir()) || p.starts_with(synced_repos_dir())
+}
+
 pub fn scenarios_dir() -> PathBuf {
     base_dir().join("scenarios")
 }
@@ -884,6 +901,23 @@ pub fn ensure_central_repo(allow_migration: bool) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn links_into_synced_repos_count_as_managed() {
+        let _guard = test_base_dir_lock();
+        let tmp = tempfile::tempdir().unwrap();
+        set_test_base_dir_override(Some(tmp.path().to_path_buf()));
+        let in_skills = skills_dir().join("a");
+        let in_synced = synced_repo_dir("acme").join("current/a");
+        let elsewhere = tmp.path().join("elsewhere/a");
+        let managed = (
+            is_managed_source_path(&in_skills),
+            is_managed_source_path(&in_synced),
+            is_managed_source_path(&elsewhere),
+        );
+        set_test_base_dir_override(None);
+        assert_eq!(managed, (true, true, false));
+    }
 
     // ── migrate_repo_if_needed (#252) ──
 

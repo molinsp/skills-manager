@@ -233,9 +233,107 @@ pub fn device_flow_poll(device_code: &str, proxy_url: Option<&str>) -> Result<De
     })
 }
 
+// ── Pull requests (synced repo dev mode) ──
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PullRequestInfo {
+    pub url: String,
+    pub number: u64,
+    /// True when an open PR for the branch already existed and was reused.
+    pub existing: bool,
+}
+
+fn pr_info_from_json(v: &serde_json::Value, existing: bool) -> Option<PullRequestInfo> {
+    Some(PullRequestInfo {
+        url: v.get("html_url")?.as_str()?.to_string(),
+        number: v.get("number")?.as_u64()?,
+        existing,
+    })
+}
+
+fn find_open_pull_request(
+    client: &reqwest::blocking::Client,
+    token: &str,
+    owner: &str,
+    repo: &str,
+    head_branch: &str,
+) -> Result<Option<PullRequestInfo>> {
+    let url = format!(
+        "{API_BASE}/repos/{owner}/{repo}/pulls?state=open&head={}",
+        urlencoding::encode(&format!("{owner}:{head_branch}"))
+    );
+    let resp = request(client, reqwest::Method::GET, &url, token)
+        .send()
+        .context("GITHUB_NETWORK: could not reach api.github.com")?;
+    match resp.status().as_u16() {
+        200 => {
+            let list: Vec<serde_json::Value> = resp.json().context("Unexpected pulls response")?;
+            Ok(list.first().and_then(|v| pr_info_from_json(v, true)))
+        }
+        401 => bail!("GITHUB_TOKEN_INVALID: GitHub rejected the token (401)"),
+        s => bail!("GitHub pull request lookup returned HTTP {s}"),
+    }
+}
+
+/// Open a pull request `owner:head_branch` -> `base_branch`, or return the
+/// already open one for that branch.
+pub fn create_pull_request(
+    token: &str,
+    owner: &str,
+    repo: &str,
+    head_branch: &str,
+    base_branch: &str,
+    title: &str,
+    body: &str,
+    proxy_url: Option<&str>,
+) -> Result<PullRequestInfo> {
+    let client = build_http_client(proxy_url, 20);
+    if let Some(existing) = find_open_pull_request(&client, token, owner, repo, head_branch)? {
+        return Ok(existing);
+    }
+    let resp = request(
+        &client,
+        reqwest::Method::POST,
+        &format!("{API_BASE}/repos/{owner}/{repo}/pulls"),
+        token,
+    )
+    .json(&serde_json::json!({
+        "title": title,
+        "head": head_branch,
+        "base": base_branch,
+        "body": body,
+    }))
+    .send()
+    .context("GITHUB_NETWORK: could not reach api.github.com")?;
+    match resp.status().as_u16() {
+        201 => {
+            let v: serde_json::Value = resp.json().context("Unexpected create-PR response")?;
+            pr_info_from_json(&v, false).context("create-PR response missing html_url")
+        }
+        401 => bail!("GITHUB_TOKEN_INVALID: GitHub rejected the token (401)"),
+        403 | 404 => bail!("GITHUB_SCOPE: the token cannot open pull requests on {owner}/{repo}"),
+        422 => {
+            // Most likely "a pull request already exists"; look once more.
+            if let Some(existing) = find_open_pull_request(&client, token, owner, repo, head_branch)? {
+                return Ok(existing);
+            }
+            bail!("GitHub rejected the pull request (422)")
+        }
+        s => bail!("GitHub create-PR returned HTTP {s}"),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pr_json_is_parsed() {
+        let v = serde_json::json!({"html_url": "https://github.com/a/b/pull/7", "number": 7});
+        let info = pr_info_from_json(&v, true).unwrap();
+        assert_eq!((info.url.as_str(), info.number, info.existing), ("https://github.com/a/b/pull/7", 7, true));
+        assert!(pr_info_from_json(&serde_json::json!({}), false).is_none());
+    }
 
     #[test]
     fn repo_name_validation() {

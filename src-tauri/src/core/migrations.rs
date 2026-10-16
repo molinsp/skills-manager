@@ -2,7 +2,7 @@ use anyhow::{bail, Context, Result};
 use rusqlite::Connection;
 
 /// Current schema version. Bump this when adding a new migration.
-const LATEST_VERSION: u32 = 8;
+const LATEST_VERSION: u32 = 9;
 
 /// Run all pending migrations on the database.
 ///
@@ -55,6 +55,7 @@ fn migrate_step(conn: &Connection, from_version: u32) -> Result<()> {
         5 => migrate_v5_to_v6(conn),
         6 => migrate_v6_to_v7(conn),
         7 => migrate_v7_to_v8(conn),
+        8 => migrate_v8_to_v9(conn),
         _ => bail!("unknown migration version: {from_version}"),
     }
 }
@@ -321,6 +322,51 @@ fn migrate_v7_to_v8(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
+/// v8 → v9: Synced repos (shared git repos users subscribe to).
+///
+/// `synced_repos` tracks each clone (kept outside the Backup repo);
+/// `synced_repo_skills` tracks the skills discovered in it. Picked skills are
+/// also normal `skills` rows with `source_type = 'synced_repo'`.
+fn migrate_v8_to_v9(conn: &Connection) -> Result<()> {
+    conn.execute_batch(
+        "
+        CREATE TABLE IF NOT EXISTS synced_repos (
+            slug TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            url TEXT NOT NULL,
+            branch TEXT,
+            resolved_branch TEXT,
+            subpath TEXT,
+            head_revision TEXT,
+            last_fetched_at INTEGER,
+            last_error TEXT,
+            auto_update INTEGER NOT NULL DEFAULT 1,
+            state TEXT NOT NULL DEFAULT 'ok',
+            dev_mode INTEGER NOT NULL DEFAULT 0,
+            dev_branch TEXT,
+            dev_base_revision TEXT,
+            pr_url TEXT,
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            created_at INTEGER NOT NULL DEFAULT 0
+        );
+
+        CREATE TABLE IF NOT EXISTS synced_repo_skills (
+            repo_slug TEXT NOT NULL REFERENCES synced_repos(slug) ON DELETE CASCADE,
+            rel_path TEXT NOT NULL,
+            skill_id TEXT REFERENCES skills(id) ON DELETE SET NULL,
+            name TEXT NOT NULL,
+            description TEXT,
+            state TEXT NOT NULL DEFAULT 'available',
+            first_seen_at INTEGER NOT NULL DEFAULT 0,
+            last_seen_at INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (repo_slug, rel_path)
+        );
+        CREATE INDEX IF NOT EXISTS idx_synced_repo_skills_skill ON synced_repo_skills(skill_id);
+        ",
+    )?;
+    Ok(())
+}
+
 // ── Helpers ──
 
 fn add_column_if_missing(
@@ -389,6 +435,48 @@ mod tests {
         assert!(tables.contains(&"skill_tags".to_string()));
         assert!(tables.contains(&"scenario_skill_tools".to_string()));
         assert!(tables.contains(&"audit_log".to_string()));
+        assert!(tables.contains(&"synced_repos".to_string()));
+        assert!(tables.contains(&"synced_repo_skills".to_string()));
+    }
+
+    #[test]
+    fn v8_database_upgrades_to_v9_with_synced_repo_tables() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch("PRAGMA foreign_keys=ON;").unwrap();
+        run_migrations(&conn).unwrap();
+        conn.execute_batch(
+            "DROP TABLE synced_repo_skills; DROP TABLE synced_repos; PRAGMA user_version = 8;",
+        )
+        .unwrap();
+
+        run_migrations(&conn).unwrap();
+
+        let version: u32 = conn
+            .pragma_query_value(None, "user_version", |row| row.get(0))
+            .unwrap();
+        assert_eq!(version, 9);
+        conn.execute(
+            "INSERT INTO synced_repos (slug, name, url) VALUES ('r', 'R', 'https://x/r.git')",
+            [],
+        )
+        .unwrap();
+        let (auto_update, state, dev_mode): (i64, String, i64) = conn
+            .query_row(
+                "SELECT auto_update, state, dev_mode FROM synced_repos WHERE slug = 'r'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!((auto_update, state.as_str(), dev_mode), (1, "ok", 0));
+        conn.execute(
+            "INSERT INTO synced_repo_skills (repo_slug, rel_path, name) VALUES ('r', 'a', 'A')",
+            [],
+        )
+        .unwrap();
+        let st: String = conn
+            .query_row("SELECT state FROM synced_repo_skills", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(st, "available");
     }
 
     #[test]

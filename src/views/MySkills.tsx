@@ -25,6 +25,7 @@ import {
   Share2,
   Tag,
   Trash2,
+  GitFork,
 } from "lucide-react";
 import { open as dialogOpen } from "@tauri-apps/plugin-dialog";
 import { useNavigate } from "react-router-dom";
@@ -1041,6 +1042,8 @@ export function MySkills() {
       case "local":
       case "import":
         return <HardDrive className="h-3 w-3" />;
+      case "synced_repo":
+        return <GitFork className="h-3 w-3" />;
       default:
         return <Globe className="h-3 w-3" />;
     }
@@ -1077,7 +1080,9 @@ export function MySkills() {
   }, [skills, selectedIds, viewedPreset, anyDisabled]);
 
   const sourceTypeLabel = (skill: ManagedSkill) =>
-    skill.source_type === "skillssh" ? "skills.sh" : skill.source_type;
+    skill.source_type === "synced_repo"
+      ? t("syncedRepos.badge", { name: api.getSyncedRepoRef(skill)?.name ?? "" })
+      : skill.source_type === "skillssh" ? "skills.sh" : skill.source_type;
 
   const refreshLabel = (skill: ManagedSkill) =>
     skill.source_type === "local" || skill.source_type === "import"
@@ -1478,13 +1483,13 @@ export function MySkills() {
                               : "opacity-0 group-hover:opacity-100"
                           )}
                           actions={[
-                            {
+                            ...(skill.source_type === "synced_repo" ? [] : [{
                               key: "check",
                               label: t("mySkills.updateActions.check"),
                               icon: <RefreshCw className={cn("h-3.5 w-3.5", checkingSkillId === skill.id && "animate-spin")} />,
                               disabled: checkingSkillId === skill.id,
                               onSelect: () => handleCheckUpdate(skill),
-                            },
+                            }]),
                             ...(canRefresh(skill)
                               ? [{
                                   key: "refresh",
@@ -1496,7 +1501,7 @@ export function MySkills() {
                               : []),
                             {
                               key: "delete",
-                              label: t("common.delete"),
+                              label: skill.source_type === "synced_repo" ? t("syncedRepos.unsubscribe") : t("common.delete"),
                               icon: <Trash2 className="h-3.5 w-3.5" />,
                               danger: true,
                               onSelect: () => setSkillToDelete(skill),
@@ -1634,6 +1639,11 @@ export function MySkills() {
                         {sourceIcon(skill.source_type)}
                         {sourceTypeLabel(skill)}
                       </span>
+                      {api.getSyncedRepoRef(skill)?.devMode && (
+                        <span className="shrink-0 rounded-full bg-amber-500/12 px-2 py-0.5 text-[11px] font-medium text-amber-600 dark:text-amber-400">
+                          {t("syncedRepos.devTag")}
+                        </span>
+                      )}
                       {enabledInPreset && (
                         <>
                           <span className="text-faint">·</span>
@@ -1780,6 +1790,11 @@ export function MySkills() {
                     {sourceIcon(skill.source_type)}
                     {sourceTypeLabel(skill)}
                   </span>
+                  {api.getSyncedRepoRef(skill)?.devMode && (
+                    <span className="shrink-0 rounded-full bg-amber-500/12 px-2 py-0.5 text-[11px] font-medium text-amber-600 dark:text-amber-400">
+                      {t("syncedRepos.devTag")}
+                    </span>
+                  )}
                   {enabledInPreset && (
                     <span className="text-[13px] font-medium text-amber-600 dark:text-amber-400/80">
                       {viewedPresetName}
@@ -1818,13 +1833,13 @@ export function MySkills() {
                           : "opacity-0 group-hover:opacity-100"
                       )}
                       actions={[
-                        {
+                        ...(skill.source_type === "synced_repo" ? [] : [{
                           key: "check",
                           label: t("mySkills.updateActions.check"),
                           icon: <RefreshCw className={cn("h-3.5 w-3.5", checkingSkillId === skill.id && "animate-spin")} />,
                           disabled: checkingSkillId === skill.id,
                           onSelect: () => handleCheckUpdate(skill),
-                        },
+                        }]),
                         ...(canRefresh(skill)
                           ? [{
                               key: "refresh",
@@ -1836,7 +1851,7 @@ export function MySkills() {
                           : []),
                         {
                           key: "delete",
-                          label: t("common.delete"),
+                          label: skill.source_type === "synced_repo" ? t("syncedRepos.unsubscribe") : t("common.delete"),
                           icon: <Trash2 className="h-3.5 w-3.5" />,
                           danger: true,
                           onSelect: () => setSkillToDelete(skill),
@@ -1909,8 +1924,12 @@ export function MySkills() {
       />
       <ConfirmDialog
         open={skillToDelete !== null}
-        title={t("mySkills.delete")}
-        message={t("mySkills.deleteConfirm", { name: skillToDelete?.name || "" })}
+        title={skillToDelete?.source_type === "synced_repo" ? t("syncedRepos.unsubscribeTitle") : t("mySkills.delete")}
+        message={
+          skillToDelete?.source_type === "synced_repo"
+            ? t("syncedRepos.unsubscribeConfirm", { name: skillToDelete.name })
+            : t("mySkills.deleteConfirm", { name: skillToDelete?.name || "" })
+        }
         onClose={() => setSkillToDelete(null)}
         onConfirm={async () => {
           if (skillToDelete) handleDeleteSkill(skillToDelete);

@@ -109,6 +109,47 @@ pub struct ScenarioSkillToolToggleRecord {
     pub updated_at: i64,
 }
 
+/// A subscribed shared git repo (`synced_repos` table).
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct SyncedRepoRecord {
+    pub slug: String,
+    pub name: String,
+    pub url: String,
+    pub branch: Option<String>,
+    pub resolved_branch: Option<String>,
+    pub subpath: Option<String>,
+    pub head_revision: Option<String>,
+    pub last_fetched_at: Option<i64>,
+    pub last_error: Option<String>,
+    pub auto_update: bool,
+    /// 'ok' | 'canonical_dirty' | 'missing_clone' | 'auth_required'
+    pub state: String,
+    pub dev_mode: bool,
+    pub dev_branch: Option<String>,
+    pub dev_base_revision: Option<String>,
+    pub pr_url: Option<String>,
+    pub sort_order: i32,
+    pub created_at: i64,
+}
+
+/// A skill discovered in a synced repo (`synced_repo_skills` table).
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct SyncedRepoSkillRecord {
+    pub repo_slug: String,
+    pub rel_path: String,
+    pub skill_id: Option<String>,
+    pub name: String,
+    pub description: Option<String>,
+    /// 'available' | 'picked' | 'removed_upstream'
+    pub state: String,
+    pub first_seen_at: i64,
+    pub last_seen_at: i64,
+}
+
+const SYNCED_REPO_COLS: &str = "slug, name, url, branch, resolved_branch, subpath, head_revision, last_fetched_at, last_error, auto_update, state, dev_mode, dev_branch, dev_base_revision, pr_url, sort_order, created_at";
+const SYNCED_REPO_SKILL_COLS: &str =
+    "repo_slug, rel_path, skill_id, name, description, state, first_seen_at, last_seen_at";
+
 impl SkillStore {
     pub fn new(db_path: &PathBuf) -> Result<Self> {
         let conn = Connection::open(db_path)?;
@@ -369,6 +410,28 @@ impl SkillStore {
         Ok(())
     }
 
+    /// Point a skill at a new central path (synced skills that moved or were
+    /// orphaned). The path column is UNIQUE; callers pass a free path.
+    pub fn update_skill_central_path(&self, id: &str, central_path: &str) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        let now = chrono::Utc::now().timestamp_millis();
+        conn.execute(
+            "UPDATE skills SET central_path = ?1, updated_at = ?2 WHERE id = ?3",
+            params![central_path, now, id],
+        )?;
+        Ok(())
+    }
+
+    /// Update the recorded repo-relative path of a synced skill.
+    pub fn update_skill_source_metadata_subpath(&self, id: &str, subpath: &str) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "UPDATE skills SET source_subpath = ?1 WHERE id = ?2",
+            params![subpath, id],
+        )?;
+        Ok(())
+    }
+
     pub fn update_skill_source_ref(&self, id: &str, source_ref: &str) -> Result<()> {
         let conn = self.conn.lock().unwrap();
         conn.execute(
@@ -429,16 +492,202 @@ impl SkillStore {
     /// path skill B is about to vacate.
     pub fn park_central_paths_for_reindex(&self) -> Result<()> {
         let conn = self.conn.lock().unwrap();
+        // Synced skills live inside a clone, outside the metadata-managed
+        // skills dir, so they keep their paths.
         conn.execute(
-            "UPDATE skills SET central_path = 'sm-reindex-parked://' || id",
+            "UPDATE skills SET central_path = 'sm-reindex-parked://' || id WHERE source_type <> 'synced_repo'",
             [],
         )?;
         Ok(())
     }
 
+    /// IDs of skills subscribed from synced repos (`source_type = 'synced_repo'`).
+    pub fn get_synced_skill_ids(&self) -> Result<std::collections::HashSet<String>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare("SELECT id FROM skills WHERE source_type = 'synced_repo'")?;
+        let ids: rusqlite::Result<std::collections::HashSet<String>> =
+            stmt.query_map([], |row| row.get::<_, String>(0))?.collect();
+        Ok(ids?)
+    }
+
     pub fn delete_skill(&self, id: &str) -> Result<()> {
         let conn = self.conn.lock().unwrap();
         conn.execute("DELETE FROM skills WHERE id = ?1", params![id])?;
+        Ok(())
+    }
+
+    // ── Synced repos ──
+
+    pub fn insert_synced_repo(&self, repo: &SyncedRepoRecord) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            &format!(
+                "INSERT INTO synced_repos ({SYNCED_REPO_COLS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)"
+            ),
+            params![
+                repo.slug,
+                repo.name,
+                repo.url,
+                repo.branch,
+                repo.resolved_branch,
+                repo.subpath,
+                repo.head_revision,
+                repo.last_fetched_at,
+                repo.last_error,
+                repo.auto_update,
+                repo.state,
+                repo.dev_mode,
+                repo.dev_branch,
+                repo.dev_base_revision,
+                repo.pr_url,
+                repo.sort_order,
+                repo.created_at,
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// Overwrite every mutable column of an existing repo row (matched by slug).
+    pub fn update_synced_repo(&self, repo: &SyncedRepoRecord) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "UPDATE synced_repos SET name = ?2, url = ?3, branch = ?4, resolved_branch = ?5, subpath = ?6,
+                head_revision = ?7, last_fetched_at = ?8, last_error = ?9, auto_update = ?10, state = ?11,
+                dev_mode = ?12, dev_branch = ?13, dev_base_revision = ?14, pr_url = ?15, sort_order = ?16
+             WHERE slug = ?1",
+            params![
+                repo.slug,
+                repo.name,
+                repo.url,
+                repo.branch,
+                repo.resolved_branch,
+                repo.subpath,
+                repo.head_revision,
+                repo.last_fetched_at,
+                repo.last_error,
+                repo.auto_update,
+                repo.state,
+                repo.dev_mode,
+                repo.dev_branch,
+                repo.dev_base_revision,
+                repo.pr_url,
+                repo.sort_order,
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn list_synced_repos(&self) -> Result<Vec<SyncedRepoRecord>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(&format!(
+            "SELECT {SYNCED_REPO_COLS} FROM synced_repos ORDER BY sort_order, created_at, slug"
+        ))?;
+        let rows = stmt.query_map([], map_synced_repo_row)?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    pub fn get_synced_repo(&self, slug: &str) -> Result<Option<SyncedRepoRecord>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(&format!(
+            "SELECT {SYNCED_REPO_COLS} FROM synced_repos WHERE slug = ?1"
+        ))?;
+        let mut rows = stmt.query_map(params![slug], map_synced_repo_row)?;
+        Ok(rows.next().transpose()?)
+    }
+
+    /// Deletes the repo row and (via cascade) its `synced_repo_skills` rows.
+    /// Does not delete `skills` rows or files; callers unpick first.
+    pub fn delete_synced_repo(&self, slug: &str) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute("DELETE FROM synced_repos WHERE slug = ?1", params![slug])?;
+        Ok(())
+    }
+
+    /// Insert or replace a discovered skill row. On conflict the original
+    /// `first_seen_at` is preserved.
+    pub fn upsert_synced_repo_skill(&self, rec: &SyncedRepoSkillRecord) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            &format!(
+                "INSERT INTO synced_repo_skills ({SYNCED_REPO_SKILL_COLS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+                 ON CONFLICT(repo_slug, rel_path) DO UPDATE SET
+                    skill_id = excluded.skill_id,
+                    name = excluded.name,
+                    description = excluded.description,
+                    state = excluded.state,
+                    last_seen_at = excluded.last_seen_at"
+            ),
+            params![
+                rec.repo_slug,
+                rec.rel_path,
+                rec.skill_id,
+                rec.name,
+                rec.description,
+                rec.state,
+                rec.first_seen_at,
+                rec.last_seen_at,
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn list_synced_repo_skills(&self, repo_slug: &str) -> Result<Vec<SyncedRepoSkillRecord>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(&format!(
+            "SELECT {SYNCED_REPO_SKILL_COLS} FROM synced_repo_skills WHERE repo_slug = ?1 ORDER BY rel_path"
+        ))?;
+        let rows = stmt.query_map(params![repo_slug], map_synced_repo_skill_row)?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    pub fn get_synced_repo_skill(
+        &self,
+        repo_slug: &str,
+        rel_path: &str,
+    ) -> Result<Option<SyncedRepoSkillRecord>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(&format!(
+            "SELECT {SYNCED_REPO_SKILL_COLS} FROM synced_repo_skills WHERE repo_slug = ?1 AND rel_path = ?2"
+        ))?;
+        let mut rows = stmt.query_map(params![repo_slug, rel_path], map_synced_repo_skill_row)?;
+        Ok(rows.next().transpose()?)
+    }
+
+    /// Find the synced-repo row that a picked `skills` row points at.
+    pub fn get_synced_repo_skill_by_skill_id(
+        &self,
+        skill_id: &str,
+    ) -> Result<Option<SyncedRepoSkillRecord>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(&format!(
+            "SELECT {SYNCED_REPO_SKILL_COLS} FROM synced_repo_skills WHERE skill_id = ?1"
+        ))?;
+        let mut rows = stmt.query_map(params![skill_id], map_synced_repo_skill_row)?;
+        Ok(rows.next().transpose()?)
+    }
+
+    /// Set the state (and linked skill id) of a discovered skill.
+    pub fn set_synced_repo_skill_state(
+        &self,
+        repo_slug: &str,
+        rel_path: &str,
+        state: &str,
+        skill_id: Option<&str>,
+    ) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "UPDATE synced_repo_skills SET state = ?3, skill_id = ?4 WHERE repo_slug = ?1 AND rel_path = ?2",
+            params![repo_slug, rel_path, state, skill_id],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_synced_repo_skill(&self, repo_slug: &str, rel_path: &str) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "DELETE FROM synced_repo_skills WHERE repo_slug = ?1 AND rel_path = ?2",
+            params![repo_slug, rel_path],
+        )?;
         Ok(())
     }
 
@@ -1017,8 +1266,16 @@ impl SkillStore {
     ) -> Result<()> {
         let conn = self.conn.lock().unwrap();
         let tx = conn.unchecked_transaction()?;
-        tx.execute("DELETE FROM scenario_skill_tools", [])?;
-        tx.execute("DELETE FROM scenario_skills", [])?;
+        // Synced skills are not in the metadata snapshot; keep their preset
+        // memberships and tool toggles.
+        tx.execute(
+            "DELETE FROM scenario_skill_tools WHERE skill_id NOT IN (SELECT id FROM skills WHERE source_type = 'synced_repo')",
+            [],
+        )?;
+        tx.execute(
+            "DELETE FROM scenario_skills WHERE skill_id NOT IN (SELECT id FROM skills WHERE source_type = 'synced_repo')",
+            [],
+        )?;
 
         // OR IGNORE / OR REPLACE don't suppress FK violations in SQLite, so we
         // must skip memberships that reference skills or scenarios no longer in the DB.
@@ -1468,6 +1725,114 @@ mod scenario_membership_tests {
     }
 
     #[test]
+    fn metadata_replace_keeps_synced_skill_memberships_and_paths() {
+        let tmp = tempdir().unwrap();
+        let store = SkillStore::new(&tmp.path().join("test.db")).unwrap();
+        store
+            .insert_scenario(&ScenarioRecord {
+                id: "s1".to_string(),
+                name: "S1".to_string(),
+                description: None,
+                icon: None,
+                sort_order: 0,
+                created_at: 1,
+                updated_at: 1,
+            })
+            .unwrap();
+        store.upsert_skill(&sample_skill("local")).unwrap();
+        let mut synced = sample_skill("synced");
+        synced.source_type = "synced_repo".to_string();
+        store.upsert_skill(&synced).unwrap();
+        store.add_skill_to_scenario("s1", "local").unwrap();
+        store.add_skill_to_scenario("s1", "synced").unwrap();
+        store.ensure_scenario_skill_tool_defaults("s1", "synced", &["ToolA".to_string()]).unwrap();
+
+        store.park_central_paths_for_reindex().unwrap();
+        assert_eq!(
+            store.get_skill_by_id("synced").unwrap().unwrap().central_path,
+            "/tmp/synced"
+        );
+        assert!(store
+            .get_skill_by_id("local")
+            .unwrap()
+            .unwrap()
+            .central_path
+            .starts_with("sm-reindex-parked://"));
+        assert_eq!(
+            store.get_synced_skill_ids().unwrap().into_iter().collect::<Vec<_>>(),
+            vec!["synced".to_string()]
+        );
+
+        // Snapshot lists nothing: local membership goes, synced stays.
+        store.replace_scenario_memberships_from_metadata(&[]).unwrap();
+        assert_eq!(store.get_skill_ids_for_scenario("s1").unwrap(), vec!["synced"]);
+        assert_eq!(
+            store.get_enabled_tools_for_scenario_skill("s1", "synced").unwrap(),
+            vec!["ToolA"]
+        );
+    }
+
+    #[test]
+    fn synced_repo_crud_roundtrip() {
+        let tmp = tempdir().unwrap();
+        let store = SkillStore::new(&tmp.path().join("test.db")).unwrap();
+        let repo = SyncedRepoRecord {
+            slug: "acme".to_string(),
+            name: "Acme".to_string(),
+            url: "https://example.com/acme.git".to_string(),
+            branch: None,
+            resolved_branch: Some("main".to_string()),
+            subpath: None,
+            head_revision: None,
+            last_fetched_at: None,
+            last_error: None,
+            auto_update: true,
+            state: "ok".to_string(),
+            dev_mode: false,
+            dev_branch: None,
+            dev_base_revision: None,
+            pr_url: None,
+            sort_order: 0,
+            created_at: 5,
+        };
+        store.insert_synced_repo(&repo).unwrap();
+        assert_eq!(store.get_synced_repo("acme").unwrap().unwrap(), repo);
+
+        let mut updated = repo.clone();
+        updated.state = "canonical_dirty".to_string();
+        updated.dev_mode = true;
+        store.update_synced_repo(&updated).unwrap();
+        assert_eq!(store.list_synced_repos().unwrap(), vec![updated]);
+
+        let rec = SyncedRepoSkillRecord {
+            repo_slug: "acme".to_string(),
+            rel_path: "skills/a".to_string(),
+            skill_id: None,
+            name: "A".to_string(),
+            description: None,
+            state: "available".to_string(),
+            first_seen_at: 1,
+            last_seen_at: 1,
+        };
+        store.upsert_synced_repo_skill(&rec).unwrap();
+        let mut again = rec.clone();
+        again.first_seen_at = 99;
+        again.last_seen_at = 2;
+        store.upsert_synced_repo_skill(&again).unwrap();
+        let got = store.get_synced_repo_skill("acme", "skills/a").unwrap().unwrap();
+        assert_eq!((got.first_seen_at, got.last_seen_at), (1, 2));
+
+        store
+            .set_synced_repo_skill_state("acme", "skills/a", "removed_upstream", None)
+            .unwrap();
+        assert_eq!(store.list_synced_repo_skills("acme").unwrap()[0].state, "removed_upstream");
+
+        store.delete_synced_repo("acme").unwrap();
+        assert!(store.list_synced_repo_skills("acme").unwrap().is_empty());
+        assert!(store.get_synced_repo("acme").unwrap().is_none());
+    }
+
+    #[test]
     fn skips_memberships_referencing_missing_skill_or_scenario() {
         let tmp = tempdir().unwrap();
         let store = SkillStore::new(&tmp.path().join("test.db")).unwrap();
@@ -1505,6 +1870,41 @@ mod scenario_membership_tests {
             .unwrap()
             .is_empty());
     }
+}
+
+fn map_synced_repo_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<SyncedRepoRecord> {
+    Ok(SyncedRepoRecord {
+        slug: row.get(0)?,
+        name: row.get(1)?,
+        url: row.get(2)?,
+        branch: row.get(3)?,
+        resolved_branch: row.get(4)?,
+        subpath: row.get(5)?,
+        head_revision: row.get(6)?,
+        last_fetched_at: row.get(7)?,
+        last_error: row.get(8)?,
+        auto_update: row.get::<_, i32>(9)? != 0,
+        state: row.get(10)?,
+        dev_mode: row.get::<_, i32>(11)? != 0,
+        dev_branch: row.get(12)?,
+        dev_base_revision: row.get(13)?,
+        pr_url: row.get(14)?,
+        sort_order: row.get(15)?,
+        created_at: row.get(16)?,
+    })
+}
+
+fn map_synced_repo_skill_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<SyncedRepoSkillRecord> {
+    Ok(SyncedRepoSkillRecord {
+        repo_slug: row.get(0)?,
+        rel_path: row.get(1)?,
+        skill_id: row.get(2)?,
+        name: row.get(3)?,
+        description: row.get(4)?,
+        state: row.get(5)?,
+        first_seen_at: row.get(6)?,
+        last_seen_at: row.get(7)?,
+    })
 }
 
 fn map_skill_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<SkillRecord> {

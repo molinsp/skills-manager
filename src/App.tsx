@@ -14,6 +14,7 @@ import { InstallSkills } from "./views/InstallSkills";
 import { Settings } from "./views/Settings";
 import { ProjectDetail } from "./views/ProjectDetail";
 import { Backup } from "./views/Backup";
+import { SyncedRepos } from "./views/SyncedRepos";
 
 function ThemedToaster() {
   const { resolvedTheme } = useThemeContext();
@@ -47,6 +48,7 @@ function App() {
               <Route path="/lobster-workspace/:agentKey" element={<WorkspaceView config={LOBSTER_WORKSPACE_CONFIG} />} />
               <Route path="/install" element={<InstallSkills />} />
               <Route path="/backup" element={<Backup />} />
+              <Route path="/synced-repos" element={<SyncedRepos />} />
               <Route path="/project/:id" element={<ProjectDetail />} />
               <Route path="/settings" element={<Settings />} />
             </Route>
