@@ -35,7 +35,7 @@ export function StatusBanner({
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 gap-3">
-          <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-black/10">
+          <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-black/10">
             <AlertTriangle className={cn("h-4 w-4", iconClass)} />
           </div>
           <div className="min-w-0">
@@ -50,7 +50,7 @@ export function StatusBanner({
           <button
             type="button"
             onClick={onAction}
-            className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-white/10 bg-black/10 px-3 py-1.5 text-[13px] font-medium text-primary transition-colors hover:bg-black/20"
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-black/10 bg-black/10 dark:border-white/10 px-3 py-1.5 text-[13px] font-medium text-primary transition-colors hover:bg-black/20"
           >
             <RefreshCw className="h-3.5 w-3.5" />
             {actionLabel}

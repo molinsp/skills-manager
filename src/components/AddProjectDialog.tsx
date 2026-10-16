@@ -128,7 +128,7 @@ export function AddProjectDialog({ open, onClose, onAdded }: Props) {
           </h2>
           <button
             onClick={onClose}
-            className="text-muted hover:text-secondary p-1 rounded transition-colors outline-none"
+            className="text-muted hover:text-secondary p-1 rounded-md transition-colors outline-none"
           >
             <X className="w-4 h-4" />
           </button>
@@ -244,7 +244,7 @@ export function AddProjectDialog({ open, onClose, onAdded }: Props) {
                     >
                       <div
                         className={cn(
-                          "w-4 h-4 rounded border flex items-center justify-center shrink-0",
+                          "w-4 h-4 rounded-[4px] border flex items-center justify-center shrink-0",
                           selected.has(path)
                             ? "bg-accent-dark border-accent-border text-white"
                             : "border-border-subtle"

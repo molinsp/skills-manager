@@ -145,7 +145,7 @@ export function Dashboard() {
                   <div>
                     <h4 className="text-[13px] text-secondary font-medium flex items-center gap-1.5">
                       {skill.name}
-                      <span className="text-[11px] px-1.5 py-px rounded bg-surface-hover text-muted border border-border font-normal">
+                      <span className="text-[11px] px-1.5 py-px rounded-full bg-surface-hover text-muted border border-border font-normal">
                         {skill.source_type}
                       </span>
                     </h4>

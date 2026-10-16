@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { getPresetIconOption } from "../lib/presetIcons";
+import { normalizeSkillSearch, skillSearchMatches } from "../lib/skillSearch";
 import { cn } from "../utils";
 
 type ItemKind = "skill" | "preset" | "project" | "action";
@@ -82,14 +83,10 @@ export function CommandPalette() {
 
   const items = useMemo<PaletteItem[]>(() => {
     const q = query.trim().toLowerCase();
+    const skillQuery = normalizeSkillSearch(query);
 
     const skillItems: PaletteItem[] = managedSkills
-      .filter(
-        (s) =>
-          !q ||
-          s.name.toLowerCase().includes(q) ||
-          (s.description || "").toLowerCase().includes(q),
-      )
+      .filter((s) => skillSearchMatches(skillQuery, [s.name, s.description]))
       .slice(0, 8)
       .map((s) => ({
         id: `skill:${s.id}`,
@@ -285,7 +282,7 @@ export function CommandPalette() {
                   )}
                 </div>
                 {item.shortcut && (
-                  <span className="rounded border border-border-subtle bg-surface-hover px-1.5 py-0.5 font-mono text-[11px] text-faint">
+                  <span className="rounded-md border border-border-subtle bg-surface-hover px-1.5 py-0.5 font-mono text-[11px] text-faint">
                     {item.shortcut}
                   </span>
                 )}
@@ -321,7 +318,7 @@ export function CommandPalette() {
             placeholder={t("commandPalette.placeholder")}
             className="flex-1 bg-transparent text-[14px] text-primary outline-none placeholder:text-faint"
           />
-          <span className="rounded border border-border-subtle bg-surface-hover px-1.5 py-0.5 font-mono text-[11px] text-faint">
+          <span className="rounded-md border border-border-subtle bg-surface-hover px-1.5 py-0.5 font-mono text-[11px] text-faint">
             ESC
           </span>
         </div>
@@ -342,19 +339,19 @@ export function CommandPalette() {
 
         <div className="flex items-center gap-3 border-t border-border-subtle bg-bg-secondary px-4 py-2 text-[11px] text-muted">
           <span className="flex items-center gap-1">
-            <kbd className="rounded border border-border-subtle bg-surface px-1 font-mono text-[11px]">
+            <kbd className="rounded-md border border-border-subtle bg-surface px-1 font-mono text-[11px]">
               ↑↓
             </kbd>
             {t("commandPalette.hints.navigate")}
           </span>
           <span className="flex items-center gap-1">
-            <kbd className="rounded border border-border-subtle bg-surface px-1 font-mono text-[11px]">
+            <kbd className="rounded-md border border-border-subtle bg-surface px-1 font-mono text-[11px]">
               ↵
             </kbd>
             {t("commandPalette.hints.open")}
           </span>
           <span className="ml-auto flex items-center gap-1">
-            <kbd className="rounded border border-border-subtle bg-surface px-1 font-mono text-[11px]">
+            <kbd className="rounded-md border border-border-subtle bg-surface px-1 font-mono text-[11px]">
               ⌘K
             </kbd>
             {t("commandPalette.hints.toggle")}

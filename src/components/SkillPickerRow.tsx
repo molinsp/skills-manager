@@ -66,7 +66,7 @@ export function SkillPickerRow({
     >
       <div
         className={cn(
-          "flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors",
+          "flex h-4 w-4 shrink-0 items-center justify-center rounded-[4px] border transition-colors",
           selectable && selected
             ? "border-accent bg-accent text-white"
             : selectable

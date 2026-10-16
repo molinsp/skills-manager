@@ -1005,8 +1005,8 @@ export function InstallSkills() {
               <div ref={marketListRef} className="scroll-mt-4" />
 
               {filteredMarketSkills.length === 0 ? (
-                <div className="app-panel flex flex-col items-center justify-center rounded-2xl px-6 py-14 text-center">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-border bg-background text-muted">
+                <div className="app-panel flex flex-col items-center justify-center rounded-xl px-6 py-14 text-center">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-border bg-background text-muted">
                     <Search className="h-5 w-5" />
                   </div>
                   <h3 className="mt-4 text-[14px] font-semibold text-secondary">
@@ -1365,7 +1365,7 @@ export function InstallSkills() {
                                         (e.target as HTMLInputElement).blur();
                                       }
                                     }}
-                                    className="min-w-0 max-w-[220px] rounded border border-accent-border bg-surface px-1.5 py-0.5 text-[13px] font-semibold text-secondary outline-none focus:ring-1 focus:ring-accent"
+                                    className="min-w-0 max-w-[220px] rounded-lg border border-accent-border bg-surface px-1.5 py-0.5 text-[13px] font-semibold text-secondary outline-none focus:ring-1 focus:ring-accent"
                                   />
                                 ) : (
                                   <h3 className="truncate text-[13px] font-semibold text-secondary">
@@ -1377,7 +1377,7 @@ export function InstallSkills() {
                                     onClick={() =>
                                       setRenameEditing((prev) => ({ ...prev, [group.name]: group.name }))
                                     }
-                                    className="shrink-0 rounded p-0.5 text-muted transition-colors hover:bg-surface-hover hover:text-secondary"
+                                    className="shrink-0 rounded-md p-0.5 text-muted transition-colors hover:bg-surface-hover hover:text-secondary"
                                     title={t("install.scan.rename")}
                                   >
                                     <Pencil className="h-3 w-3" />
@@ -1533,7 +1533,7 @@ export function InstallSkills() {
               <button
                 onClick={handleGitPreviewClose}
                 disabled={gitConfirmLoading}
-                className="rounded p-1 text-muted transition-colors hover:text-secondary"
+                className="rounded-md p-1 text-muted transition-colors hover:text-secondary"
               >
                 <X className="h-4 w-4" />
               </button>

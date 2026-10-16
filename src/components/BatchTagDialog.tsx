@@ -109,7 +109,7 @@ export function BatchTagDialog({ open, skills, allTags, note, onClose, onApply }
           </h2>
           <button
             onClick={onClose}
-            className="text-muted hover:text-secondary p-1 rounded transition-colors outline-none"
+            className="text-muted hover:text-secondary p-1 rounded-md transition-colors outline-none"
           >
             <X className="w-4 h-4" />
           </button>
@@ -204,7 +204,7 @@ export function BatchTagDialog({ open, skills, allTags, note, onClose, onApply }
                         type="button"
                         onMouseDown={(e) => e.preventDefault()}
                         onClick={() => addTag(suggestion)}
-                        className="w-full truncate rounded px-1.5 py-1 text-left text-[12px] text-secondary hover:bg-surface-hover"
+                        className="w-full truncate rounded-md px-1.5 py-1 text-left text-[12px] text-secondary hover:bg-surface-hover"
                       >
                         {suggestion}
                       </button>

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Enforces the greppable parts of the UI spec ("UI 风格规范" in AGENTS.md):
-// arbitrary radii, font sizes off the type scale, colour literals in class
+// radii and font sizes off their scales, colour literals in class
 // names, and palette text colours that only read well in one theme. Each
 // rule's message names the fix; exceptions carry their reason here.
 import fs from 'node:fs';
@@ -18,6 +18,22 @@ const AGENT_ICON_CELLS = new Set([
   'src/components/SyncDots.tsx',
 ]);
 const ICON_GLYPH_SIZES = ['8px', '9px', '10px'];
+
+// The other small square cells that sit beside agent icons share their 4px
+// radius: the sidebar's nav, preset and project icons, and custom checkboxes.
+const FOUR_PX_CELLS = new Set([
+  ...AGENT_ICON_CELLS,
+  'src/components/AddProjectDialog.tsx',
+  'src/components/Sidebar.tsx',
+  'src/components/SkillPickerRow.tsx',
+]);
+
+const RADIUS_EXCEPTIONS = {
+  // The deliberate welcome dialog.
+  'src/components/HelpDialog.tsx': ['rounded-[28px]', 'rounded-2xl'],
+  // Inline code inside a rendered SKILL.md is document typography.
+  'src/components/SkillMarkdown.tsx': ['rounded'],
+};
 
 const TYPE_SCALE = ['11px', '12px', '13px', '14px', '17px'];
 const FONT_SIZE_EXCEPTIONS = {
@@ -45,11 +61,11 @@ const COLOUR_LITERAL_EXCEPTIONS = new Set([
 
 const RULES = [
   {
-    pattern: /\brounded(?:-[a-z]{1,2})?-\[[^\]\s]+\]/g,
+    // Bare rounded (4px), rounded-sm, rounded-2xl/3xl and arbitrary values are off the scale.
+    pattern: /(?<![\w-])rounded(?:-(?:t|r|b|l|tl|tr|br|bl|s|e|ss|se|es|ee))?(?:-(?:sm|2xl|3xl|\[[^\]\s]+\]))?(?![\w-])/g,
     allowed: (file, match) =>
-      (match === 'rounded-[4px]' && AGENT_ICON_CELLS.has(file)) ||
-      // The welcome dialog's oversized radius is deliberate.
-      (match === 'rounded-[28px]' && file === 'src/components/HelpDialog.tsx'),
+      (match === 'rounded-[4px]' && FOUR_PX_CELLS.has(file)) ||
+      (RADIUS_EXCEPTIONS[file] ?? []).includes(match),
     fix: 'use the radius scale: rounded-xl (cards, panels, dialogs), rounded-lg (buttons, inputs), '
       + 'rounded-md (icon buttons, segments, menu items), rounded-full (pills, tags, badges)',
   },

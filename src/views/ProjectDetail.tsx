@@ -43,6 +43,7 @@ import { cn } from "../utils";
 import * as api from "../lib/tauri";
 import type { ProjectSkill, ManagedSkill, ProjectAgentTarget } from "../lib/tauri";
 import { getErrorMessage } from "../lib/error";
+import { normalizeSkillSearch, skillSearchMatches } from "../lib/skillSearch";
 import { useRevealProjectFolder } from "../hooks/useRevealProjectFolder";
 import { AddSkillsSheet } from "../components/AddSkillsSheet";
 const projectLastUsedAgentsKey = (projectId: string) =>
@@ -294,11 +295,9 @@ export function ProjectDetail() {
   }, [detailSkill, groupedSkills]);
 
   const filtered = useMemo(() => {
+    const query = normalizeSkillSearch(search);
     return groupedSkills.filter((skill) => {
-      const matchesSearch =
-        skill.name.toLowerCase().includes(search.toLowerCase()) ||
-        (skill.description || "").toLowerCase().includes(search.toLowerCase());
-      if (!matchesSearch) return false;
+      if (!skillSearchMatches(query, [skill.name, skill.description])) return false;
       if (tagFilters.size > 0) {
         const wantUntagged = tagFilters.has(UNTAGGED_FILTER);
         const matchUntagged = wantUntagged && skill.tags.length === 0;
@@ -1013,7 +1012,7 @@ export function ProjectDetail() {
                 <div className="absolute right-0 top-full z-20 mt-2 w-72 rounded-md border border-border bg-surface p-3 text-[12px] leading-snug shadow-lg">
                   <button
                     onClick={dismissAddCallout}
-                    className="absolute right-1.5 top-1.5 rounded p-0.5 text-faint hover:text-secondary"
+                    className="absolute right-1.5 top-1.5 rounded-md p-0.5 text-faint hover:text-secondary"
                     aria-label={t("common.close")}
                   >
                     <X className="h-3 w-3" />
@@ -1321,7 +1320,7 @@ export function ProjectDetail() {
                           <button
                             onClick={(e) => { e.stopPropagation(); handleUpdateCenter(skill); }}
                             disabled={isUpdatingCenter || isUpdatingProject}
-                            className="rounded px-2 py-1 text-[13px] font-medium text-muted transition-colors outline-none hover:bg-surface-hover hover:text-secondary disabled:opacity-50"
+                            className="rounded-md px-2 py-1 text-[13px] font-medium text-muted transition-colors outline-none hover:bg-surface-hover hover:text-secondary disabled:opacity-50"
                             title={t("project.updateCenter")}
                           >
                             {isUpdatingCenter ? (
@@ -1335,7 +1334,7 @@ export function ProjectDetail() {
                           <button
                             onClick={(e) => { e.stopPropagation(); handleUpdateProject(skill); }}
                             disabled={isUpdatingCenter || isUpdatingProject}
-                            className="rounded px-2 py-1 text-[13px] font-medium text-muted transition-colors outline-none hover:bg-surface-hover hover:text-secondary disabled:opacity-50"
+                            className="rounded-md px-2 py-1 text-[13px] font-medium text-muted transition-colors outline-none hover:bg-surface-hover hover:text-secondary disabled:opacity-50"
                             title={
                               skill.status === "project_newer"
                                 ? t("project.resetFromCenter")
@@ -1365,7 +1364,7 @@ export function ProjectDetail() {
                         ) : null}
                         <button
                           onClick={(e) => { e.stopPropagation(); setDeleteTarget(skill); }}
-                          className="rounded px-2 py-1 text-muted transition-colors outline-none hover:bg-red-500/10 hover:text-red-500"
+                          className="rounded-md px-2 py-1 text-muted transition-colors outline-none hover:bg-red-500/10 hover:text-red-500"
                           title={t("project.deleteSkill")}
                         >
                           <Trash2 className="h-3.5 w-3.5" />
@@ -1475,7 +1474,7 @@ export function ProjectDetail() {
                         <button
                           onClick={(e) => { e.stopPropagation(); handleUpdateCenter(skill); }}
                           disabled={isUpdatingCenter || isUpdatingProject}
-                          className="rounded p-0.5 text-muted transition-colors hover:bg-surface-hover hover:text-secondary disabled:opacity-50"
+                          className="rounded-md p-0.5 text-muted transition-colors hover:bg-surface-hover hover:text-secondary disabled:opacity-50"
                           title={t("project.updateCenter")}
                         >
                           {isUpdatingCenter ? (
@@ -1489,7 +1488,7 @@ export function ProjectDetail() {
                         <button
                           onClick={(e) => { e.stopPropagation(); handleUpdateProject(skill); }}
                           disabled={isUpdatingCenter || isUpdatingProject}
-                          className="rounded p-0.5 text-muted transition-colors hover:bg-surface-hover hover:text-secondary disabled:opacity-50"
+                          className="rounded-md p-0.5 text-muted transition-colors hover:bg-surface-hover hover:text-secondary disabled:opacity-50"
                           title={
                             skill.status === "project_newer"
                               ? t("project.resetFromCenter")
@@ -1520,7 +1519,7 @@ export function ProjectDetail() {
                     ) : null}
                     <button
                       onClick={(e) => { e.stopPropagation(); setDeleteTarget(skill); }}
-                      className="shrink-0 rounded p-0.5 text-muted transition-colors hover:bg-red-500/10 hover:text-red-500"
+                      className="shrink-0 rounded-md p-0.5 text-muted transition-colors hover:bg-red-500/10 hover:text-red-500"
                       title={t("project.deleteSkill")}
                     >
                       <Trash2 className="h-3.5 w-3.5" />

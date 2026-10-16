@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.42.0] - 2026-10-14
+
+### Release Overview
+- Spanish and Korean join the interface languages and Traditional Chinese is now fully translated; search treats `-`, `_` and spaces alike; on macOS, clicking the Dock icon brings the window back; colours, sizes and corners are more consistent, and easier to read in light mode.
+
+### User-facing
+- **Spanish and Korean** — Choose Español or 한국어 under Settings → Language. On first launch, a Spanish or Korean system language selects it automatically. With five languages, the setting is now a drop-down. Thanks to @Carlo1911 (#476) and @siakun (#355).
+- **Traditional Chinese is complete** — 72 strings that still appeared in Simplified Chinese are now translated, including close behaviour, the tray icon, proxy settings, the source diff and batch tag editing.
+- **Search treats `-`, `_` and spaces alike** — "wrap up" finds `wrap-up` in the Library, agent workspaces, projects, the command palette and Add Skills. The Library also searches each skill's folder name. Thanks to @shuaiyafei (#543, #510).
+- **macOS: clicking the Dock icon brings the window back** after it was closed to the tray or minimized. Thanks to @sean0407 (#538, #526).
+- **Easier to read in light mode** — Preset icons, status icons and several success, warning and delete labels used shades meant for dark backgrounds and nearly vanished on light ones. Font sizes and corner radii across the app now follow one scale (#544, #545, #551).
+
+### Developer & Governance
+- `npm run lint` runs two new checks. `scripts/check-ui-spec.mjs` rejects corner radii and font sizes off the scale, colour literals in class names, and palette text colours readable in only one theme. `scripts/check-i18n.mjs` requires `zh.json` to match `en.json` key for key; other locales may lag, since missing keys fall back to English, but must not keep keys `en.json` dropped or use other placeholders.
+- `release:prepare` updates the version string in every `src/i18n/*.json`, so a new locale needs no script change. The Prepare Release workflow now commits every file the script writes; before, it staged only five of them.
+- All skill searches share `src/lib/skillSearch.ts`.
+- The `RunEvent::Reopen` handler is macOS-only, so Windows and Linux builds no longer warn about its unused arguments (#552).
 ## [1.41.0] - 2026-10-11
 
 ### Release Overview

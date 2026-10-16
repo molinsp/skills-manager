@@ -47,7 +47,7 @@ export function TagRenameDialog({ open, currentName, onClose, onRename }: Props)
           <h2 className="text-[13px] font-semibold text-primary">{t("mySkills.tags.renameTag")}</h2>
           <button
             onClick={onClose}
-            className="text-muted hover:text-secondary p-1 rounded transition-colors outline-none"
+            className="text-muted hover:text-secondary p-1 rounded-md transition-colors outline-none"
           >
             <X className="w-4 h-4" />
           </button>

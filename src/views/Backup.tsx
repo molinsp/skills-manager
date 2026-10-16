@@ -833,7 +833,7 @@ export function Backup() {
                           <button
                             type="button"
                             onClick={handleSaveDeviceName}
-                            className="rounded p-0.5 text-muted transition-colors hover:text-secondary"
+                            className="rounded-md p-0.5 text-muted transition-colors hover:text-secondary"
                             title={t("common.save")}
                           >
                             <Check className="h-3.5 w-3.5" />
@@ -848,7 +848,7 @@ export function Backup() {
                               setDeviceNameDraft(deviceName);
                               setDeviceNameEditing(true);
                             }}
-                            className="rounded p-0.5 text-faint transition-colors hover:text-secondary"
+                            className="rounded-md p-0.5 text-faint transition-colors hover:text-secondary"
                             title={t("backup.device.rename")}
                           >
                             <Pencil className="h-3 w-3" />
