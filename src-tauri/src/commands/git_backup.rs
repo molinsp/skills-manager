@@ -1110,6 +1110,53 @@ mod tests {
             Some(token_url)
         );
     }
+
+    #[test]
+    fn reconcile_fallback_keeps_synced_skills() {
+        let env = test_env();
+        // No metadata snapshot -> fallback path.
+        let clone_skill = central_repo::synced_repo_dir("acme").join("repo/s1");
+        std::fs::create_dir_all(&clone_skill).unwrap();
+        std::fs::write(clone_skill.join("SKILL.md"), "---\nname: s1\n---\n").unwrap();
+        let mk = |id: &str, source_type: &str, path: String| crate::core::skill_store::SkillRecord {
+            id: id.to_string(),
+            name: id.to_string(),
+            description: None,
+            source_type: source_type.to_string(),
+            source_ref: None,
+            source_ref_resolved: None,
+            source_subpath: None,
+            source_branch: None,
+            source_revision: None,
+            remote_revision: None,
+            central_path: path,
+            content_hash: None,
+            enabled: true,
+            created_at: 1,
+            updated_at: 1,
+            status: "ok".to_string(),
+            update_status: "unknown".to_string(),
+            last_checked_at: None,
+            last_check_error: None,
+        };
+        // Synced skill whose clone dir is missing must still survive.
+        let missing = central_repo::synced_repo_dir("acme").join("repo/gone");
+        env.store
+            .insert_skill(&mk("synced-ok", "synced_repo", clone_skill.to_string_lossy().to_string()))
+            .unwrap();
+        env.store
+            .insert_skill(&mk("synced-missing", "synced_repo", missing.to_string_lossy().to_string()))
+            .unwrap();
+        env.store
+            .insert_skill(&mk("stale", "import", env.skills_dir.join("nope").to_string_lossy().to_string()))
+            .unwrap();
+
+        reconcile_skills_index_unlocked(&env.store).unwrap();
+
+        assert!(env.store.get_skill_by_id("synced-ok").unwrap().is_some());
+        assert!(env.store.get_skill_by_id("synced-missing").unwrap().is_some());
+        assert!(env.store.get_skill_by_id("stale").unwrap().is_none());
+    }
 }
 
 pub(crate) fn reconcile_skills_index_unlocked(store: &SkillStore) -> anyhow::Result<()> {
@@ -1123,8 +1170,14 @@ pub(crate) fn reconcile_skills_index_unlocked(store: &SkillStore) -> anyhow::Res
     std::fs::create_dir_all(&skills_dir)?;
 
     // Remove stale DB records whose central directories no longer exist.
+    // Synced skills live in a clone outside skills_dir and are managed by
+    // the synced-repos flow, so they are never reconciled away here.
+    let synced_ids = store.get_synced_skill_ids()?;
     let existing = store.get_all_skills()?;
     for skill in existing {
+        if synced_ids.contains(&skill.id) {
+            continue;
+        }
         if !std::path::Path::new(&skill.central_path).exists() {
             store.delete_skill(&skill.id)?;
         }

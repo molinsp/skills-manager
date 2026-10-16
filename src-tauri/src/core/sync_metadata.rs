@@ -157,8 +157,10 @@ pub(crate) fn reindex_from_metadata_unlocked(store: &SkillStore) -> Result<()> {
     let skills_root = central_repo::skills_dir();
 
     let metadata_ids: HashSet<String> = skills.iter().map(|m| m.skill_id.clone()).collect();
+    // Synced skills live in clones outside the metadata snapshot; never drop them.
+    let synced_ids = store.get_synced_skill_ids()?;
     for existing in store.get_all_skills()? {
-        if !metadata_ids.contains(&existing.id) {
+        if !metadata_ids.contains(&existing.id) && !synced_ids.contains(&existing.id) {
             store.delete_skill(&existing.id)?;
         }
     }
@@ -295,16 +297,25 @@ fn metadata_has_complete_scenario_snapshot() -> bool {
 
 fn write_skill_records_from_db(store: &SkillStore) -> Result<()> {
     let mut tags = store.get_tags_map()?;
+    let synced_ids = store.get_synced_skill_ids()?;
     for skill in store.get_all_skills()? {
+        if synced_ids.contains(&skill.id) {
+            continue;
+        }
         write_skill_file(&skill, &tags.remove(&skill.id).unwrap_or_default())?;
     }
     Ok(())
 }
 
 fn write_scenario_records_from_db(store: &SkillStore) -> Result<()> {
+    let synced_ids = store.get_synced_skill_ids()?;
     for scenario in store.get_all_scenarios()? {
         write_scenario_file(&scenario)?;
-        let skill_ids = store.get_skill_ids_for_scenario(&scenario.id)?;
+        let skill_ids: Vec<String> = store
+            .get_skill_ids_for_scenario(&scenario.id)?
+            .into_iter()
+            .filter(|id| !synced_ids.contains(id))
+            .collect();
         for (index, skill_id) in skill_ids.iter().enumerate() {
             let tools = store
                 .get_scenario_skill_tool_toggles(&scenario.id, skill_id)?
@@ -325,10 +336,12 @@ fn write_scenario_records_from_db(store: &SkillStore) -> Result<()> {
 }
 
 fn remove_stale_metadata_files(store: &SkillStore) -> Result<()> {
+    let synced_ids = store.get_synced_skill_ids()?;
     let skill_ids: HashSet<String> = store
         .get_all_skills()?
         .into_iter()
         .map(|skill| skill.id)
+        .filter(|id| !synced_ids.contains(id))
         .collect();
     remove_stale_json_files(&metadata_dir().join("skills"), &skill_ids)?;
 
@@ -344,6 +357,9 @@ fn remove_stale_metadata_files(store: &SkillStore) -> Result<()> {
         let mut expected_memberships = HashSet::new();
         for scenario_id in &scenario_ids {
             for skill_id in store.get_skill_ids_for_scenario(scenario_id)? {
+                if synced_ids.contains(&skill_id) {
+                    continue;
+                }
                 expected_memberships.insert((scenario_id.clone(), skill_id));
             }
         }
@@ -839,5 +855,57 @@ mod tests {
             after.updated_at, 1_000_000,
             "updated_at must be refreshed when skill content changes"
         );
+    }
+
+    fn add_synced_skill(repo: &TestRepo, id: &str) -> PathBuf {
+        let dir = central_repo::synced_repo_dir("acme").join("repo").join(id);
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("SKILL.md"), format!("---\nname: {id}\n---\n")).unwrap();
+        let mut rec = sample_skill(id, &dir);
+        rec.source_type = "synced_repo".to_string();
+        repo.store.insert_skill(&rec).unwrap();
+        dir
+    }
+
+    #[test]
+    fn metadata_writes_skip_synced_skills_and_reindex_keeps_them() {
+        let repo = test_repo();
+        let local_dir = write_skill_dir("local-skill");
+        repo.store
+            .insert_skill(&sample_skill("local", &local_dir))
+            .unwrap();
+        let synced_dir = add_synced_skill(&repo, "synced");
+        repo.store
+            .insert_scenario(&ScenarioRecord {
+                id: "p1".to_string(),
+                name: "P1".to_string(),
+                description: None,
+                icon: None,
+                sort_order: 0,
+                created_at: 1,
+                updated_at: 1,
+            })
+            .unwrap();
+        repo.store.add_skill_to_scenario("p1", "local").unwrap();
+        repo.store.add_skill_to_scenario("p1", "synced").unwrap();
+
+        // Must not fail on relative_skill_path for the synced skill.
+        write_all_from_db_unlocked(&repo.store).unwrap();
+        let skills_meta = metadata_dir().join("skills");
+        assert!(skills_meta.join("local.json").is_file());
+        assert!(!skills_meta.join("synced.json").exists());
+        let members = metadata_dir().join("scenario-skills").join("p1");
+        assert!(members.join("local.json").is_file());
+        assert!(!members.join("synced.json").exists());
+
+        reindex_from_metadata_unlocked(&repo.store).unwrap();
+
+        let synced = repo.store.get_skill_by_id("synced").unwrap().unwrap();
+        assert_eq!(synced.central_path, synced_dir.to_string_lossy());
+        assert!(repo.store.get_skill_by_id("local").unwrap().is_some());
+        let mut ids = repo.store.get_skill_ids_for_scenario("p1").unwrap();
+        ids.sort();
+        assert_eq!(ids, vec!["local", "synced"]);
+        assert!(synced_dir.is_dir());
     }
 }

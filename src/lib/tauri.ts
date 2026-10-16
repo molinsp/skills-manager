@@ -39,6 +39,30 @@ export interface ManagedSkill {
   targets: SkillTarget[];
   preset_ids: string[];
   tags: string[];
+  /** Set for skills subscribed from a synced repo (source_type "synced_repo"). */
+  synced_repo?: SyncedRepoRef | null;
+}
+
+export interface SyncedRepoRef {
+  slug: string;
+  name: string;
+  dev_mode: boolean;
+  state: string;
+}
+
+/** Normalised view of a skill's synced-repo link, tolerant of either casing. */
+export function getSyncedRepoRef(
+  skill: ManagedSkill,
+): { slug: string; name: string; devMode: boolean; state: string } | null {
+  const raw =
+    skill.synced_repo ?? (skill as unknown as { syncedRepo?: SyncedRepoRef | null }).syncedRepo;
+  if (!raw) return null;
+  return {
+    slug: raw.slug,
+    name: raw.name,
+    devMode: raw.dev_mode ?? false,
+    state: raw.state,
+  };
 }
 
 export interface SkillTarget {
@@ -857,3 +881,163 @@ export const updateGlobalLocalSkillFromCenter = (agent: string, skillRelativePat
 
 export const deleteGlobalLocalSkill = (agent: string, skillRelativePath: string) =>
   invoke<void>("delete_global_local_skill", { agent, skillRelativePath });
+
+
+// ── Synced repos ──
+
+export type SyncedRepoState = "ok" | "canonical_dirty" | "missing_clone" | "auth_required";
+
+export interface SyncedRepo {
+  slug: string;
+  name: string;
+  url: string;
+  branch: string | null;
+  resolvedBranch: string | null;
+  subpath: string | null;
+  headRevision: string | null;
+  lastFetchedAt: number | null;
+  lastError: string | null;
+  autoUpdate: boolean;
+  state: SyncedRepoState;
+  devMode: boolean;
+  devBranch: string | null;
+  prUrl: string | null;
+  pickedCount: number;
+  availableCount: number;
+}
+
+export type SyncedRepoSkillState = "available" | "picked" | "removed_upstream";
+
+export interface SyncedRepoSkillClash {
+  kind: "personal" | "synced";
+  skillId: string;
+  skillName: string;
+}
+
+export interface SyncedRepoSkill {
+  relPath: string;
+  name: string;
+  description: string | null;
+  state: SyncedRepoSkillState;
+  skillId: string | null;
+  clash: SyncedRepoSkillClash | null;
+}
+
+export const syncedRepoList = () => invoke<SyncedRepo[]>("synced_repo_list");
+
+export const syncedRepoAdd = (args: {
+  url: string;
+  branch?: string | null;
+  subpath?: string | null;
+  name?: string | null;
+}) => invoke<SyncedRepo>("synced_repo_add", args);
+
+export const syncedRepoUpdate = (args: {
+  slug: string;
+  name?: string;
+  autoUpdate?: boolean;
+  branch?: string | null;
+  subpath?: string | null;
+}) => invoke<SyncedRepo>("synced_repo_update", args);
+
+export const syncedRepoRemove = (slug: string) =>
+  invoke<void>("synced_repo_remove", { slug });
+
+export const syncedRepoListSkills = (slug: string) =>
+  invoke<SyncedRepoSkill[]>("synced_repo_list_skills", { slug });
+
+export const syncedRepoPickSkills = (
+  slug: string,
+  relPaths: string[],
+  replaceSkillIds: string[],
+) => invoke<string[]>("synced_repo_pick_skills", { slug, relPaths, replaceSkillIds });
+
+export const syncedRepoUnpickSkills = (skillIds: string[]) =>
+  invoke<void>("synced_repo_unpick_skills", { skillIds });
+
+export interface SyncedRepoRefreshResult {
+  slug: string;
+  status: "up_to_date" | "updated" | "blocked" | "error";
+  updatedSkills: number;
+  renamedSkills: number;
+  removedUpstream: number;
+  error: string | null;
+}
+
+export const syncedRepoRefresh = (slug?: string) =>
+  invoke<SyncedRepoRefreshResult[]>("synced_repo_refresh", { slug: slug ?? null });
+
+export const syncedRepoResolveRemoved = (
+  slug: string,
+  relPath: string,
+  action: "remove" | "keep",
+) => invoke<void>("synced_repo_resolve_removed", { slug, relPath, action });
+
+export const syncedRepoResolveCanonicalDirty = (
+  slug: string,
+  action: "dev" | "discard",
+) => invoke<void>("synced_repo_resolve_canonical_dirty", { slug, action });
+
+// ── Synced repos: dev mode ──
+
+export interface SyncedRepoDevChangedSkill {
+  relPath: string;
+  name: string;
+  filesChanged: number;
+}
+
+export interface SyncedRepoDevStatus {
+  devMode: boolean;
+  branch: string | null;
+  baseRevision: string | null;
+  changedSkills: SyncedRepoDevChangedSkill[];
+  outsideSubfolderFiles: string[];
+  aheadOfRepo: number;
+  repoAheadBy: number;
+  unpushedCommits: number;
+  merged: boolean;
+}
+
+export interface SyncedRepoDevDiff {
+  skills: { relPath: string; name: string; entries: SkillSourceDiffEntry[] }[];
+}
+
+export interface SyncedRepoRebaseResult {
+  status: "ok" | "conflict";
+  conflictedFiles: string[];
+}
+
+export interface SyncedRepoPrResult {
+  url: string;
+  kind: "api" | "push_option" | "compare_page";
+  outsideSubfolderFiles: string[];
+}
+
+export interface SyncedRepoFinishResult {
+  status: "finished" | "needs_confirmation";
+  unpushedCommits: number;
+}
+
+export const syncedRepoSetDevMode = (slug: string, enabled: boolean) =>
+  invoke<SyncedRepo>("synced_repo_set_dev_mode", { slug, enabled });
+
+export const syncedRepoDevStatus = (slug: string) =>
+  invoke<SyncedRepoDevStatus>("synced_repo_dev_status", { slug });
+
+export const syncedRepoDevDiff = (slug: string) =>
+  invoke<SyncedRepoDevDiff>("synced_repo_dev_diff", { slug });
+
+export const syncedRepoDevRebase = (slug: string) =>
+  invoke<SyncedRepoRebaseResult>("synced_repo_dev_rebase", { slug });
+
+export const syncedRepoDevDiscard = (slug: string) =>
+  invoke<void>("synced_repo_dev_discard", { slug });
+
+export const syncedRepoOpenPr = (slug: string, title: string, description: string) =>
+  invoke<SyncedRepoPrResult>("synced_repo_open_pr", { slug, title, description });
+
+export const syncedRepoDevFinish = (slug: string, force?: boolean) =>
+  invoke<SyncedRepoFinishResult>("synced_repo_dev_finish", { slug, force: force ?? false });
+
+export const syncedRepoOpenDevFolder = (slug: string) =>
+  invoke<void>("synced_repo_open_dev_folder", { slug });

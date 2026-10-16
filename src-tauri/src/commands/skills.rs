@@ -216,6 +216,18 @@ pub struct ManagedSkillDto {
     pub targets: Vec<TargetDto>,
     pub preset_ids: Vec<String>,
     pub tags: Vec<String>,
+    pub synced_repo: Option<SyncedRepoRefDto>,
+}
+
+/// Which synced repo a `synced_repo` skill belongs to.
+#[derive(Debug, Serialize, Clone)]
+pub struct SyncedRepoRefDto {
+    pub slug: String,
+    pub name: String,
+    pub dev_mode: bool,
+    /// Repo state (`ok`, `canonical_dirty`, ...), or `removed_upstream` when
+    /// this skill disappeared from the repo.
+    pub state: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -340,10 +352,11 @@ pub async fn get_managed_skills(
         let skills = store.get_all_skills().map_err(AppError::db)?;
         let all_targets = store.get_all_targets().map_err(AppError::db)?;
         let tags_map = store.get_tags_map().map_err(AppError::db)?;
+        let synced_map = synced_repo_map(&store);
         let count = skills.len();
         let dtos: Vec<ManagedSkillDto> = skills
             .into_iter()
-            .map(|skill| managed_skill_to_dto(&store, skill, &all_targets, &tags_map))
+            .map(|skill| managed_skill_to_dto(&store, skill, &all_targets, &tags_map, &synced_map))
             .collect();
         let elapsed_ms = start.elapsed().as_millis();
         if should_log_first_or_slow(&GET_MANAGED_SKILLS_FIRST_CALL, elapsed_ms, 100) {
@@ -366,10 +379,11 @@ pub async fn get_skills_for_preset(
             .map_err(AppError::db)?;
         let all_targets = store.get_all_targets().map_err(AppError::db)?;
         let tags_map = store.get_tags_map().map_err(AppError::db)?;
+        let synced_map = synced_repo_map(&store);
 
         Ok(skills
             .into_iter()
-            .map(|skill| managed_skill_to_dto(&store, skill, &all_targets, &tags_map))
+            .map(|skill| managed_skill_to_dto(&store, skill, &all_targets, &tags_map, &synced_map))
             .collect())
     })
     .await?
@@ -485,7 +499,7 @@ const MAX_DIFF_FILE_BYTES: usize = 256 * 1024;
 
 /// Classify a file's bytes for diffing: oversized and binary files get a
 /// summary row instead of a text body.
-fn classify_diff_bytes(bytes: Option<Vec<u8>>) -> (&'static str, Option<String>) {
+pub(crate) fn classify_diff_bytes(bytes: Option<Vec<u8>>) -> (&'static str, Option<String>) {
     match bytes {
         Some(b) if b.len() > MAX_DIFF_FILE_BYTES => ("too_large", None),
         Some(b) if b.contains(&0) => ("binary", None),
@@ -711,6 +725,7 @@ fn source_label_for_skill(skill: &SkillRecord) -> String {
         "git" => "Git".to_string(),
         "local" => "Local".to_string(),
         "import" => "Imported".to_string(),
+        "synced_repo" => "Synced repo".to_string(),
         other => other.to_string(),
     }
 }
@@ -759,6 +774,18 @@ pub fn delete_managed_skills_by_ids(
                 failed.push(skill_id.clone());
                 continue;
             };
+
+            if skill.source_type == "synced_repo" {
+                // The files belong to the clone; unsubscribing never touches them.
+                crate::core::synced_repos::unpick(store, skill_id)?;
+                store.log_audit(
+                    AuditDraft::new("remove")
+                        .skill(skill_id.clone(), skill.name.clone())
+                        .ok(),
+                );
+                deleted += 1;
+                continue;
+            }
 
             let targets = store.get_targets_for_skill(skill_id)?;
             for target in &targets {
@@ -1819,6 +1846,8 @@ pub async fn batch_update_skills(
                         Err(err) => failed.push(format!("{}: {}", skill.name, err.message)),
                     }
                 }
+                // Refreshed together with their repo, never one by one.
+                "synced_repo" => unchanged += 1,
                 _ => failed.push(format!("{}: Source type cannot be refreshed", skill.name)),
             }
         }
@@ -1990,6 +2019,7 @@ fn managed_skill_to_dto(
     skill: SkillRecord,
     all_targets: &[SkillTargetRecord],
     tags_map: &std::collections::HashMap<String, Vec<String>>,
+    synced_map: &std::collections::HashMap<String, SyncedRepoRefDto>,
 ) -> ManagedSkillDto {
     let targets = all_targets
         .iter()
@@ -2007,6 +2037,7 @@ fn managed_skill_to_dto(
 
     let preset_ids = store.get_scenarios_for_skill(&skill.id).unwrap_or_default();
     let tags = tags_map.get(&skill.id).cloned().unwrap_or_default();
+    let synced_repo = synced_map.get(&skill.id).cloned();
 
     // Prefer description from SKILL.md so the list view reflects edits made
     // directly on disk (file watcher emits a change event; this read serves
@@ -2039,7 +2070,33 @@ fn managed_skill_to_dto(
         targets,
         preset_ids,
         tags,
+        synced_repo,
     }
+}
+
+/// skill id -> synced repo info, loaded once per list.
+fn synced_repo_map(store: &SkillStore) -> std::collections::HashMap<String, SyncedRepoRefDto> {
+    let mut map = std::collections::HashMap::new();
+    for repo in store.list_synced_repos().unwrap_or_default() {
+        for row in store.list_synced_repo_skills(&repo.slug).unwrap_or_default() {
+            let Some(skill_id) = row.skill_id else { continue };
+            let state = if row.state == "removed_upstream" {
+                "removed_upstream".to_string()
+            } else {
+                repo.state.clone()
+            };
+            map.insert(
+                skill_id,
+                SyncedRepoRefDto {
+                    slug: repo.slug.clone(),
+                    name: repo.name.clone(),
+                    dev_mode: repo.dev_mode,
+                    state,
+                },
+            );
+        }
+    }
+    map
 }
 
 pub fn managed_skill_by_id(
@@ -2052,7 +2109,8 @@ pub fn managed_skill_by_id(
         .ok_or_else(|| AppError::not_found("Skill not found"))?;
     let all_targets = store.get_all_targets().map_err(AppError::db)?;
     let tags_map = store.get_tags_map().map_err(AppError::db)?;
-    Ok(managed_skill_to_dto(store, skill, &all_targets, &tags_map))
+    let synced_map = synced_repo_map(store);
+    Ok(managed_skill_to_dto(store, skill, &all_targets, &tags_map, &synced_map))
 }
 
 /// Update an installed git-sourced skill.
@@ -2827,6 +2885,9 @@ pub fn check_skill_update_internal_with_remote(
         // A website snapshot has no revision to compare against; it stays
         // `local_only` rather than turning `unknown` on every check.
         "well-known" => {}
+        // Synced skills are updated by their repo (fetch / fast-forward), not
+        // per skill; leave their status untouched.
+        "synced_repo" => {}
         _ => {
             store
                 .update_skill_check_state(&skill.id, None, "unknown", None)
@@ -3496,6 +3557,27 @@ mod tests {
             last_checked_at: None,
             last_check_error: None,
         }
+    }
+
+    #[test]
+    fn deleting_a_synced_skill_unpicks_it_and_leaves_the_clone_alone() {
+        let repo = test_repo();
+        let clone_skill = central_repo::synced_repo_dir("acme").join("current/s1");
+        fs::create_dir_all(&clone_skill).unwrap();
+        fs::write(clone_skill.join("SKILL.md"), "---\nname: s1\n---\n").unwrap();
+        let mut rec = sample_skill("synced-1", "s1", &clone_skill);
+        rec.source_type = "synced_repo".to_string();
+        repo.store.insert_skill(&rec).unwrap();
+
+        let result = delete_managed_skills_by_ids(&repo.store, &["synced-1".to_string()]).unwrap();
+
+        assert_eq!(result.deleted, 1);
+        assert!(repo.store.get_skill_by_id("synced-1").unwrap().is_none());
+        assert!(clone_skill.join("SKILL.md").is_file());
+        assert_eq!(
+            source_label_for_skill(&rec),
+            "Synced repo"
+        );
     }
 
     #[test]

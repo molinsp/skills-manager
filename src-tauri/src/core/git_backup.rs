@@ -1944,7 +1944,7 @@ fn copy_entry(src: &Path, dst: &Path) -> std::io::Result<()> {
     std::fs::copy(src, dst).map(|_| ())
 }
 
-fn redact_urls_in_text(text: &str) -> String {
+pub(crate) fn redact_urls_in_text(text: &str) -> String {
     text.split_whitespace()
         .map(redact_url)
         .collect::<Vec<_>>()

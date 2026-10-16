@@ -6,7 +6,7 @@ use anyhow::{Context, Result};
 
 use super::{
     central_repo, scenario_service, skill_metadata, skill_store::SkillStore, sync_engine,
-    sync_metadata, tool_adapters, tool_service,
+    sync_metadata, synced_repos, tool_adapters, tool_service,
 };
 
 /// Per-stage timings collected during `initialize_store`. The struct is
@@ -88,6 +88,10 @@ fn db_library_is_intact(store: &SkillStore) -> bool {
     let canon = |p: &Path| p.canonicalize().unwrap_or_else(|_| p.to_path_buf());
     let mut recorded = std::collections::HashSet::new();
     for skill in &skills {
+        // Synced skills live in a clone, not the library being compared.
+        if skill.source_type == "synced_repo" {
+            continue;
+        }
         let path = Path::new(&skill.central_path);
         if !path.is_dir() {
             return false;
@@ -161,6 +165,12 @@ fn initialize_store_inner(
                     false
                 }
             };
+            // Worktree admin files and the `current` links hold absolute paths.
+            if let Err(err) = synced_repos::repair_all(&store) {
+                central_repo::record_startup_error(format!(
+                    "central repo: repairing synced repos after the move failed ({err:#})"
+                ));
+            }
             if done {
                 if let Err(err) = central_repo::clear_repoint_from() {
                     central_repo::record_startup_error(format!(

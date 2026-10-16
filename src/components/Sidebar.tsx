@@ -7,6 +7,7 @@ import {
   Globe,
   Download,
   CloudUpload,
+  GitFork,
   Settings,
   Plus,
   Pencil,
@@ -169,6 +170,7 @@ export function Sidebar() {
     { name: t("sidebar.mySkills"), path: "/my-skills", icon: Layers },
     { name: t("sidebar.installSkills"), path: "/install", icon: Download },
     { name: t("sidebar.backup"), path: "/backup", icon: CloudUpload },
+    { name: t("sidebar.syncedRepos"), path: "/synced-repos", icon: GitFork },
   ];
 
   const handleSwitchPreset = (id: string) => {

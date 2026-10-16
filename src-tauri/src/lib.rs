@@ -933,6 +933,8 @@ pub fn run() {
                 step.elapsed().as_millis()
             );
 
+            core::synced_repo_auto_sync::start(app.handle().clone(), store_for_setup.clone());
+
             // Object-merge crash recovery (merge-engine design §5): finish or
             // roll back an interrupted sync apply before any background work
             // can touch the repo. Best-effort, never blocks startup.
@@ -1072,6 +1074,24 @@ pub fn run() {
             commands::settings::restart_app,
             commands::settings::hide_to_tray,
             // Git Backup
+            commands::synced_repos::synced_repo_list,
+            commands::synced_repos::synced_repo_add,
+            commands::synced_repos::synced_repo_update,
+            commands::synced_repos::synced_repo_remove,
+            commands::synced_repos::synced_repo_list_skills,
+            commands::synced_repos::synced_repo_pick_skills,
+            commands::synced_repos::synced_repo_unpick_skills,
+            commands::synced_repos::synced_repo_refresh,
+            commands::synced_repos::synced_repo_resolve_removed,
+            commands::synced_repos::synced_repo_resolve_canonical_dirty,
+            commands::synced_repos::synced_repo_set_dev_mode,
+            commands::synced_repos::synced_repo_dev_status,
+            commands::synced_repos::synced_repo_dev_diff,
+            commands::synced_repos::synced_repo_dev_rebase,
+            commands::synced_repos::synced_repo_dev_discard,
+            commands::synced_repos::synced_repo_open_pr,
+            commands::synced_repos::synced_repo_dev_finish,
+            commands::synced_repos::synced_repo_open_dev_folder,
             commands::git_backup::git_backup_fetch,
             commands::git_backup::git_backup_status,
             commands::git_backup::git_backup_init,

@@ -6,5 +6,6 @@ pub mod scan;
 pub mod presets;
 pub mod settings;
 pub mod skills;
+pub mod synced_repos;
 pub mod sync;
 pub mod tools;

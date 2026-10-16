@@ -150,6 +150,7 @@ fn run_round_blocking(store: &SkillStore) -> Result<(), String> {
         .get_all_skills()
         .map_err(|err| format!("get_all_skills failed: {err}"))?
         .into_iter()
+        .filter(|s| s.source_type != "synced_repo")
         .map(|s| s.id)
         .collect();
 

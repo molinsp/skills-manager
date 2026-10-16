@@ -159,6 +159,16 @@ fn collect_watch_paths(store: &SkillStore) -> Vec<PathBuf> {
         paths.extend(adapter.all_scan_dirs());
     }
 
+    // Synced repos: the canonical clone and the dev worktree. Picked skills
+    // live there, so edits (and fetches' working-tree changes) must surface.
+    if let Ok(repos) = store.list_synced_repos() {
+        for repo in repos {
+            let dir = central_repo::synced_repo_dir(&repo.slug);
+            paths.push(dir.join("repo"));
+            paths.push(dir.join("dev"));
+        }
+    }
+
     if let Ok(projects) = store.get_all_projects() {
         let adapters = tool_adapters::all_tool_adapters(store);
         let mut seen_dirs = std::collections::HashSet::new();

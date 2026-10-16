@@ -1,4 +1,4 @@
-import type { MouseEvent } from "react";
+import type { MouseEvent, ReactNode } from "react";
 import { Loader2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { cn } from "../utils";
@@ -7,13 +7,18 @@ import type { PickerStatus } from "../lib/skillPickerStatus";
 import { getTagColor } from "../lib/skillTags";
 
 interface Props {
-  skill: ManagedSkill;
+  skill: Pick<ManagedSkill, "name" | "description" | "tags">;
   status: PickerStatus;
   allTags: string[];
   sourceLabel: string;
   selected: boolean;
   onToggle: (e: MouseEvent<HTMLDivElement>) => void;
   busy?: boolean;
+  /** Overrides for callers whose statuses mean something else (synced repos). */
+  statusLabel?: string;
+  tooltip?: string;
+  /** Extra chips/actions rendered at the right edge. */
+  trailing?: ReactNode;
 }
 
 export function SkillPickerRow({
@@ -24,6 +29,9 @@ export function SkillPickerRow({
   selected,
   onToggle,
   busy,
+  statusLabel: statusLabelOverride,
+  tooltip: tooltipOverride,
+  trailing,
 }: Props) {
   const { t } = useTranslation();
   const selectable = status === "available" && !busy;
@@ -36,13 +44,14 @@ export function SkillPickerRow({
   };
 
   const tooltip =
-    status === "conflict"
+    tooltipOverride ??
+    (status === "conflict"
       ? t("addFromLibrary.tooltip.conflict")
       : status === "installed"
         ? t("addFromLibrary.tooltip.installed")
         : status === "unavailable"
           ? t("addFromLibrary.tooltip.unavailable")
-          : undefined;
+          : undefined);
 
   return (
     <div
@@ -110,9 +119,10 @@ export function SkillPickerRow({
             status === "unavailable" && "bg-surface-hover text-muted",
           )}
         >
-          {statusLabel[status]}
+          {statusLabelOverride ?? statusLabel[status]}
         </span>
       ) : null}
+      {trailing}
     </div>
   );
 }
